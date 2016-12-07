@@ -109,6 +109,9 @@ class WP_Read_Only {
 		add_action( 'init', array( __CLASS__, 'init__log_out_non_superadmins' ) );
 		add_action( 'admin_init', array( __CLASS__, 'init__log_out_non_superadmins' ) );
 
+		// Disable cron if it's not already done
+		add_action( 'plugins_loaded', array( __CLASS__, 'plugins_loaded__disable_cron' ) );
+
 		// Hijack adding an option. Not pretty.
 		add_action( 'add_option', array( __CLASS__, 'add_option__hijack_my_name_is_not_jack' ), 1, 2 );
 
@@ -217,6 +220,24 @@ class WP_Read_Only {
 
 
 	/**
+	 * Disable cron because of db updates.
+	 *
+	 * @since 1.0.0
+	 *
+	 * @param null
+	 * @return null
+	 */
+
+	public static function plugins_loaded__disable_cron() {
+
+		if ( ! defined( 'DISABLE_WP_CRON' ) ) {
+			define( 'DISABLE_WP_CRON', true );
+		}
+
+	}/* plugins_loaded__disable_cron() */
+
+
+	/**
 	 * I shouldn't be allowed to write code. I am sorry.
 	 *
 	 * If add_option() is called, we need to make sure no db writes get attempted.
@@ -236,7 +257,7 @@ class WP_Read_Only {
 
 	public static function add_option__hijack_my_name_is_not_jack( $option, $value ) {
 
-		wp_die( __( 'This site is currently in read-only mode. Updates are currently prohibited.', 'ubc-wp-read-only' ) );
+		wp_die( __( 'This site is currently in read-only mode. Updates are currently prohibited.' . print_r( array( $option, value ), true ), 'ubc-wp-read-only' ) );
 
 	}/* add_option__hijack_my_name_is_not_jack() */
 
