@@ -179,6 +179,11 @@ class WP_Read_Only {
 		// Disable direct DB writes that use $wpdb - some plugins may try to be clever
 		add_filter( 'query', array( __CLASS__, 'query__disable_direct_db_writes' ), 999 );
 
+		// Disable all meta updates (JIC query__disable_direct_db_writes is shortcircuited somehow)
+		add_filter( 'update_comment_metadata', '__return_false' );
+		add_filter( 'update_post_metadata', '__return_false' );
+		add_filter( 'update_user_metadata', '__return_false' );
+
 	}/* add_filters() */
 
 
