@@ -20,7 +20,6 @@
 	code-freeze
 	wp-schedules-read-only
 */
-
 namespace UBC;
 
 // If this file is called directly, abort.
@@ -116,6 +115,9 @@ class WP_Read_Only {
 		add_action( 'init', array( __CLASS__, 'init__log_out_non_superadmins' ) );
 		add_action( 'admin_init', array( __CLASS__, 'init__log_out_non_superadmins' ) );
 
+		// On logout we append ubcwprologout=true to the home_url(), detect that and show message
+		add_action( 'init', array( __CLASS__, 'init__show_logout_message' ) );
+
 		// Disable cron if it's not already done
 		add_action( 'plugins_loaded', array( __CLASS__, 'plugins_loaded__disable_cron' ), 1 );
 
@@ -173,6 +175,9 @@ class WP_Read_Only {
 
 		// 4.7+ Only. Disable AJAX. Other AJAX killing methods can be removed when 4.7+ is min. req. for this plugin.
 		add_filter( 'wp_doing_ajax', array( __CLASS__, 'wp_doing_ajax__disable_ajax' ) );
+
+		// Disable direct DB writes that use $wpdb - some plugins may try to be clever
+		add_filter( 'query', array( __CLASS__, 'query__disable_direct_db_writes' ), 999 );
 
 	}/* add_filters() */
 
@@ -248,7 +253,46 @@ class WP_Read_Only {
 		// Off you go
 		wp_logout();
 
+		// Redirect to the home page of this site with an extra param
+		// We can detect this and display a message to the user informing them
+		// What has happened.
+		wp_safe_redirect( trailingslashit( home_url() ) . '?ubcwprologout=true' );
+		exit;
+
 	}/* init__log_out_non_superadmins() */
+
+
+	/**
+	 * When we force log people out, we append ubcwprologout=true to the URL.
+	 * Here, we detect that, and if it's shown, we output a message letting the
+	 * user know what happened and why.
+	 *
+	 * @since 1.0.0
+	 *
+	 * @param null
+	 * @return null
+	 */
+
+	public static function init__show_logout_message() {
+
+		if ( ! isset( $_GET['ubcwprologout'] ) || 'true' !== $_GET['ubcwprologout'] ) {
+			return;
+		}
+
+		// In the interest of keeping this as one file, so it can be mu-plugins'd, this
+		// is a little ugly.
+		$title_text = esc_attr__( 'You have been signed out', 'ubc-wp-read-only' );
+		$message_text = esc_attr__( 'This site is temporarily in read-only mode. You have been signed out automatically. You will be able to sign in, make comments, and edit your site once the administrators have turned off read-only mode.', 'ubc-wp-read-only' );
+		$markup = '
+		<div id="ubcwprologout-message" style="margin: 1em; padding: 2em; background: #f7f7f7; border: 1px solid #d1d1d1; border-radius: 2px; color: #686868;">
+			<h1>' . $title_text . '</h1>
+			<p>' . $message_text . '</p>
+		</div>
+		';
+
+		echo wp_kses_post( $markup );
+
+	}/* init__show_logout_message() */
 
 
 	/**
@@ -381,7 +425,7 @@ class WP_Read_Only {
 
 	public static function generic__kill_switch() {
 
-		wp_die( esc_html__( 'This site is currently in read-only mode.' ) );
+		wp_die( esc_html__( 'This site is currently in read-only mode. You have been signed out. You may need to clear your cookies and cache in order to view the site.' ) );
 
 	}/* generic__kill_switch() */
 
@@ -399,7 +443,7 @@ class WP_Read_Only {
 	public static function admin_init__disable_ajax() {
 
 		if ( defined( 'DOING_AJAX' ) && DOING_AJAX ) {
-			die( esc_html__( 'This site is currently in read-only mode.' ) );
+			die( esc_html__( 'This site is currently in read-only mode. You have been signed out. You may need to clear your cookies and cache in order to view the site.' ) );
 		}
 
 	}/* admin_init__disable_ajax() */
@@ -417,9 +461,39 @@ class WP_Read_Only {
 
 	public static function wp_doing_ajax__disable_ajax( $doing_ajax ) {
 
-		die( esc_html__( 'This site is currently in read-only mode.' ) );
+		if ( true === $doing_ajax ) {
+			die( esc_html__( 'This site is currently in read-only mode. You have been signed out. You may need to clear your cookies and cache in order to view the site.' ) );
+		}
 
 	}/* wp_doing_ajax__disable_ajax() */
+
+
+	/**
+	 * Some plugins may directly interface with the $wpdb class. Which is fine.
+	 * However, we need to prevent them from directly writing to the db as much
+	 * as we can. The wpdb::query() method provides a 'query' filter early on,
+	 * allowing us to detect if this is a write (create|alter|truncate|drop|
+	 * insert|delete|update|replace) and if so, empty the query.
+	 *
+	 * Many thanks to Jeremy Felt for the heads up on this.
+	 *
+	 * @since 1.0.0
+	 *
+	 * @param string $query Database query.
+	 * @return string $query Database query.
+	 */
+
+	public static function query__disable_direct_db_writes( $query ) {
+
+		if ( 0 === preg_match( '/^\s*(insert|delete|update|replace|create|alter|truncate|drop)\s/i', $query ) ) {
+			return $query;
+		}
+
+		$query = '';
+
+		return $query;
+
+	}/* query__disable_direct_db_writes() */
 
 
 	/**
